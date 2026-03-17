@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os  # Adicionado apenas para verificar a existência do arquivo
 
 # 1. Configuração de Página e Layout Dark Luxo
 st.set_page_config(page_title="CASH FLOW | AP", layout="wide", initial_sidebar_state="expanded")
@@ -93,16 +94,18 @@ try:
     df_raw, df_rec_raw = load_and_process()
     col_v = 'Valor categoria/centro de custo'
     
-    # Consolidação de meses de AMBAS as planilhas para o filtro
     meses_s = df_raw['Mes_Ano'].unique()
     meses_r = df_rec_raw['Mes_Ano'].unique()
     lista_meses = sorted(list(set(meses_s) | set(meses_r)), key=lambda x: pd.to_datetime(x, format='%m/%Y'))
 
     with st.sidebar:
-        # --- ADIÇÃO DA LOGO ---
-        st.image("logo-white.jpg", use_container_width=True)
+        # Tenta carregar a logo, se falhar (arquivo não encontrado), não trava o código
+        if os.path.exists("logo-white.jpg"):
+            st.image("logo-white.jpg", use_container_width=True)
+        else:
+            st.warning("⚠️ Logo 'logo-white.jpg' não encontrada na pasta.")
         
-        st.markdown("<h2 style='color: #00D1FF;'>💎 DASHBOARD</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: #00D1FF;'>💎 MALDÍVAS GROUP</h2>", unsafe_allow_html=True)
         if st.button("🔄 Atualizar Dados", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
@@ -115,11 +118,9 @@ try:
         cats_dinamicas = [cat for g in grupos_sel for cat in MAPA_GRUPOS[g]]
         cats_sel = st.multiselect("🏷️ Categorias:", options=sorted(list(set(cats_dinamicas))), default=sorted(list(set(cats_dinamicas))))
 
-        # --- ADIÇÃO EXPORTAÇÃO TXT ---
+        # --- SEÇÃO DE EXPORTAÇÃO TXT (RELATÓRIO CFO) ---
         st.write("---")
         if meses_sel:
-            st.markdown("### 📄 Relatório p/ Sócios")
-            
             # Cálculos para o Relatório
             df_m = df_raw[df_raw['Mes_Ano'].isin(meses_sel)]
             df_r_m = df_rec_raw[df_rec_raw['Mes_Ano'].isin(meses_sel)]
@@ -129,7 +130,7 @@ try:
             margem = (saldo / t_in * 100) if t_in > 0 else 0
             top_cat = df_m[df_m[col_v] < 0].groupby('Categoria')[col_v].sum().abs().sort_values(ascending=False).head(5)
 
-            report = f"""
+            report_txt = f"""
 ============================================================
            __  __          _      _ _             
           |  \/  |  _ _   | |  __| (_) __ __  __ _ 
@@ -137,49 +138,50 @@ try:
           |_|  |_| \__,_| |_| \__,_|_|  \_/  \__,_|
                     GROUP FINANCIAL REPORT
 ============================================================
-PERÍODO ANALISADO: {', '.join(meses_sel)}
-DATA DE EMISSÃO:  {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
+RELATÓRIO EXECUTIVO DE FLUXO DE CAIXA
+Período: {', '.join(meses_sel)}
+Data de Geração: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
 ============================================================
 
-1. RESUMO EXECUTIVO (CFO VIEW)
+1. RESUMO FINANCEIRO (CFO VIEW)
 ------------------------------------------------------------
-(+) TOTAL RECEBIDO (CASH IN):    {format_brl(t_in)}
-(-) TOTAL DESPESAS (CASH OUT):   {format_brl(t_out)}
+(+) TOTAL CASH IN (Entradas):     {format_brl(t_in)}
+(-) TOTAL CASH OUT (Saídas):      {format_brl(t_out)}
 ------------------------------------------------------------
-(=) SALDO LÍQUIDO NO PERÍODO:    {format_brl(saldo)}
-(%) MARGEM DE CAIXA:             {margem:.2f}%
+(=) SALDO LÍQUIDO DO PERÍODO:     {format_brl(saldo)}
+(%) MARGEM DE CAIXA OPERACIONAL:  {margem:.2f}%
 
-STATUS: {"✅ OPERAÇÃO SAUDÁVEL" if saldo > 0 else "🚨 ALERTA DE CASH BURN"}
+STATUS ATUAL: {"✅ OPERAÇÃO SAUDÁVEL" if saldo > 0 else "🚨 ALERTA: CASH BURN"}
 
 2. PERFORMANCE POR GRUPO ESTRATÉGICO
 ------------------------------------------------------------
 """
             for g in grupos_sel:
-                v = abs(df_m[(df_m['Grupo_Filtro'] == g) & (df_m[col_v] < 0)][col_v].sum())
-                p = (v/t_out*100) if t_out > 0 else 0
-                report += f"- {g:<20}: {format_brl(v)} ({p:.1f}%)\n"
+                v_g = abs(df_m[(df_m['Grupo_Filtro'] == g) & (df_m[col_v] < 0)][col_v].sum())
+                p_g = (v_g / t_out * 100) if t_out > 0 else 0
+                report_txt += f"- {g:<20}: {format_brl(v_g)} ({p_g:.1f}%)\n"
 
-            report += f"""
+            report_txt += f"""
 3. PARETO: TOP 5 GARGALOS (Onde está o dinheiro?)
 ------------------------------------------------------------
 """
-            for c, val in top_cat.items():
-                report += f"- {c:<25}: {format_brl(val)}\n"
+            for cat, val in top_cat.items():
+                report_txt += f"- {cat:<25}: {format_brl(val)}\n"
 
-            report += f"""
-4. INSIGHTS PARA TOMADA DE DECISÃO
+            report_txt += f"""
+4. INSIGHTS PARA OS SÓCIOS
 ------------------------------------------------------------
-* EFICIÊNCIA: A margem de {margem:.2f}% reflete o fôlego financeiro atual.
-* ALOCAÇÃO: {top_cat.index[0] if not top_cat.empty else "N/A"} é o maior centro de custo.
-* RECOMENDAÇÃO: Avaliar contratos recorrentes no grupo {top_cat.index[0] if not top_cat.empty else "N/A"}.
+* O grupo {top_cat.index[0] if not top_cat.empty else "N/A"} representa o maior peso financeiro.
+* Margem de {margem:.2f}%: {"Operação gerando caixa para reinvestimento." if saldo > 0 else "Necessidade de revisão urgente de custos fixos."}
+* Recomendação: Analisar contratos recorrentes das categorias Top 1 e 2.
 
-Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
+Gerado automaticamente via Maldívas Intel Intelligence.
 ============================================================
 """
             st.download_button(
-                label="📥 Exportar Relatório Executivo",
-                data=report,
-                file_name=f"RELATORIO_FINANCEIRO_{'_'.join(meses_sel)}.txt",
+                label="📥 Baixar Relatório para Sócios (TXT)",
+                data=report_txt,
+                file_name=f"Relatorio_CFO_{'_'.join(meses_sel)}.txt",
                 mime="text/plain",
                 use_container_width=True
             )
@@ -197,7 +199,6 @@ Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
     # --- HEADER PRINCIPAL ---
     st.title("💸 Cash Flow | Expenses and Receipts")
     
-    # Linha Superior: Cash In (Entradas)
     total_recebidos_header = df_rec[col_v].sum()
     c_in_1, c_in_2 = st.columns([1, 3])
     with c_in_1:
@@ -208,9 +209,8 @@ Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
             </div>
         """, unsafe_allow_html=True)
     
-    st.write("") # Espaçador
+    st.write("") 
 
-    # Linha das Saídas
     saidas_df = df[df[col_v] < 0]
     total_geral = saidas_df[col_v].sum()
     
@@ -233,9 +233,7 @@ Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
     with tab1:
         st.markdown("### 🏛️ Visão Executiva e Estrutura de Dados")
         st.markdown("---")
-        
         pres_col1, pres_col2 = st.columns(2)
-        
         with pres_col1:
             st.markdown(f"""
             #### 🎯 Objetivo da Ferramenta
@@ -243,42 +241,27 @@ Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
             
             **Como os dados fluem:**
             1. **Ingestão:** Conexão direta com as planilhas de Saídas e Recebidos.
-            2. **Processamento:** Limpeza de caracteres, padronização de datas e conversão monetária automática.
-            3. **Categorização:** Mapeamento inteligente de categorias em 4 grandes grupos estratégicos:
-                - **Administrativo**: Manutenção da infraestrutura.
-                - **Pessoal**: Capital humano e encargos.
-                - **Operacional**: Custo direto da prestação de serviço.
-                - **Tributário**: Obrigações governamentais.
+            2. **Processamento:** Limpeza de caracteres e conversão monetária automática.
+            3. **Categorização:** Mapeamento inteligente de categorias em 4 grandes grupos.
             """)
-            
         with pres_col2:
             st.markdown("#### 🛠️ Pilares de Análise")
-            st.info("**Fluxo de Caixa (Realizado):** Diferença exata entre o que entrou e o que saiu, sem projeções, focado no saldo bancário.")
-            st.warning("**Eficiência de Custos:** Identificação de gargalos através da análise de Pareto (80/20) e impacto percentual por grupo.")
-            st.success("**Saúde Líquida:** Visibilidade imediata de lucro ou prejuízo com alertas visuais por cores.")
-
-        st.markdown("---")
-        st.markdown("#### 📊 Hierarquia Financeira Atual")
-        # Pequena tabela didática simplificada
-        resumo_pres = pd.DataFrame({
-            "Nível": ["1. Receita Bruta", "2. Despesas Totais", "3. Resultado Líquido"],
-            "Descrição": ["Total de entradas (Cash In)", "Soma de todos os grupos de saída", "O que sobra no caixa da empresa"],
-            "Foco": ["Crescimento", "Controle", "Sustentabilidade"]
-        })
-        st.table(resumo_pres)
+            st.info("**Fluxo de Caixa:** Foco total no saldo bancário real.")
+            st.warning("**Eficiência de Custos:** Identificação de gargalos (Pareto 80/20).")
+            st.success("**Saúde Líquida:** Visibilidade imediata de lucro ou prejuízo.")
 
     with tab2:
         st.subheader("Queima de Caixa Diária (Acumulada)")
         if not saidas_df.empty:
-            burn = saidas_df.groupby('Data de pagamento')[col_v].sum().abs().cumsum().reset_index()
-            burn.columns = ['Data', 'Gasto Acumulado']
-            st.line_chart(burn.set_index('Data')['Gasto Acumulado'], color="#FF4B4B")
+            burn = saidas_df.groupby('Data de pagamento')[col_v].sum().abs().reset_index().sort_values('Data de pagamento')
+            burn['Acumulado'] = burn[col_v].cumsum()
+            st.line_chart(burn.set_index('Data de pagamento')['Acumulado'], color="#FF4B4B")
             st.write("#### Detalhamento de Saída Diária")
             diario = saidas_df.groupby('Data de pagamento')[col_v].sum().abs().reset_index()
             diario.columns = ['Data', 'Valor do Dia']
             st.dataframe(diario.style.format({'Valor do Dia': "R$ {:,.2f}"}), use_container_width=True, hide_index=True)
         else:
-            st.info("Sem saídas registradas para este filtro.")
+            st.info("Sem saídas registradas.")
 
     with tab3:
         c1, c2 = st.columns(2)
@@ -302,92 +285,55 @@ Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
         st.dataframe(df_rec, use_container_width=True, hide_index=True)
 
     with tab6:
-        label_periodo = ", ".join(meses_sel) if meses_sel else "Nenhum período selecionado"
-        st.subheader(f"Análise Financeira: {label_periodo}")
+        st.subheader(f"Análise Financeira: {', '.join(meses_sel) if meses_sel else 'Nenhum'}")
         curr_s = abs(df[df[col_v] < 0][col_v].sum())
         curr_e = df_rec[col_v].sum()
         resultado = curr_e - curr_s
-        
         col_res1, col_res2, col_res3 = st.columns(3)
         col_res1.metric("Entrou no Período", format_brl(curr_e))
         col_res2.metric("Saiu no Período", format_brl(curr_s))
-        
         color_res = "#FF4B4B" if resultado < 0 else "#00D1FF"
         st.markdown(f"**Saldo Líquido**")
         st.markdown(f"<h2 style='color: {color_res}; margin-top: -15px;'>{format_brl(resultado)}</h2>", unsafe_allow_html=True)
-        
-        df_chart = pd.DataFrame({'Tipo': ['Entradas', 'Saídas'], 'Valores': [curr_e, curr_s]}).set_index('Tipo')
-        st.bar_chart(df_chart, color="#00D1FF")
 
     with tab7:
         st.subheader("INDICADORES DE LUCRATIVIDADE")
         total_e = df_rec[col_v].sum()
         total_s = abs(df[df[col_v] < 0][col_v].sum())
         lucro_abs = total_e - total_s
-        
-        cl1, cl2 = st.columns(2)
-        
         color_lucro = "#FF4B4B" if lucro_abs < 0 else "#00D1FF"
-        with cl1:
-            st.markdown(f"**LUCRO LÍQUIDO (CAIXA)**")
-            st.markdown(f"<h2 style='color: {color_lucro}; margin-top: -15px;'>{format_brl(lucro_abs)}</h2>", unsafe_allow_html=True)
-            
-        st.write("#### Eficiência por Grupo (Lucro Líquido Caixa por Categoria)")
+        st.markdown(f"**LUCRO LÍQUIDO (CAIXA)**")
+        st.markdown(f"<h2 style='color: {color_lucro}; margin-top: -15px;'>{format_brl(lucro_abs)}</h2>", unsafe_allow_html=True)
         if total_e > 0:
             grupo_valores = df[df[col_v] < 0].groupby('Grupo_Filtro')[col_v].sum().abs().reset_index()
-            grupo_valores.columns = ['Grupo', 'Valor R$']
-            
-            st.bar_chart(grupo_valores.set_index('Grupo'), color="#00D1FF")
-            
-            st.write("📊 **Detalhamento de Impacto no Faturamento:**")
-            total_saidas_filtradas = grupo_valores['Valor R$'].sum()
-            if total_saidas_filtradas > 0:
-                grupo_impacto = grupo_valores.copy()
-                grupo_impacto['% Total Gastos'] = (grupo_impacto['Valor R$'] / total_saidas_filtradas * 100)
-                st.dataframe(
-                    grupo_impacto.assign(
-                        Porcentagem=grupo_impacto['% Total Gastos'].apply(lambda x: f"{x:.1f}%"),
-                        Valor=grupo_impacto['Valor R$'].apply(format_brl)
-                    )[['Grupo', 'Valor', 'Porcentagem']], 
-                    use_container_width=True, hide_index=True
-                )
-        else:
-            st.info("Aguardando dados de receita para calcular impacto por grupo.")
+            st.bar_chart(grupo_valores.set_index('Grupo_Filtro'), color="#00D1FF")
 
     with tab8:
-        st.header("📖 Guia Didático e Manual de Interpretação")
+        st.header("📖 Guia Didático e Manual de Instruções")
         st.markdown("""
-        Bem-vindo ao manual oficial do seu ecossistema financeiro. Este guia explica a lógica por trás de cada número para que a tomada de decisão seja cirúrgica.
+        Este painel foi desenvolvido para simplificar a gestão financeira da **Maldívas**. Abaixo, explicamos como interpretar cada seção:
 
-        ---
-        ### 📊 1. Entendendo os Pilares (Grupos)
-        As despesas não são apenas números, elas têm funções estratégicas:
-        * **Administrativo:** São os custos de "manutenção da máquina" (condomínio, softwares, aluguel). O objetivo aqui é **eficiência**.
-        * **Pessoal:** Reflete o investimento no capital humano. Monitoramos aqui a carga tributária sobre folha e bônus.
-        * **Operacional:** Custos ligados diretamente ao serviço prestado. Se este cresce sem a receita subir, há um gargalo de margem.
-        * **Tributário:** Impostos e taxas. Essencial para o compliance e saúde fiscal da Maldívas.
+        ### 1. Grupos Estratégicos (Como os dados são organizados)
+        * **Administrativo:** Custos fixos e infraestrutura (Aluguel, TI, Software). É o "custo de existir".
+        * **Pessoal:** Tudo relacionado ao time (Salários, Encargos, Benefícios). Monitoramos a eficiência do capital humano.
+        * **Operacional:** Gastos diretos para a entrega do serviço. Crescimento aqui deve ser proporcional ao faturamento.
+        * **Tributário:** Obrigações fiscais. Essencial para o compliance.
 
-        ---
-        ### 🔥 2. Gráfico de Cash Burn (Tab 2)
-        O gráfico de linha mostra o **Gasto Acumulado** ao longo do mês.
-        * **Inclinado para cima:** Indica que o caixa está sendo consumido rapidamente.
-        * **Platô (linha reta):** Indica períodos sem saídas, ideal para equilibrar com as entradas.
-        * **Utilidade:** Ajuda o CFO a prever se o saldo atual suporta os próximos 15 dias de operação.
+        ### 2. A Métrica de Cash Burn (Tab 🔥)
+        O gráfico mostra o dinheiro saindo do caixa ao longo dos dias. 
+        * **Ponto de Atenção:** Se a linha sobe muito rápido no início do mês, suas despesas fixas estão concentradas no começo do ciclo.
 
-        ---
-        ### 🎯 3. Lógica de Pareto (Tab 3)
-        Aplicamos o conceito de 80/20: 80% dos seus gastos vêm de 20% das suas categorias.
-        * **Foco:** Não perca tempo tentando economizar no "Material de Escritório" se o "Serviço de Publicidade" representa 40% do custo. Ataque o topo da lista.
+        ### 3. Análise de Pareto (Tab 🎯)
+        Focamos na regra 80/20. O dashboard identifica automaticamente quais categorias consomem a maior parte do seu orçamento. 
+        * **Dica:** Reduzir 5% da categoria principal gera mais impacto do que eliminar uma categoria pequena por completo.
 
-        ---
-        ### 💎 4. Lucratividade vs. Margem de Caixa (Tab 7)
-        Diferente do DRE contábil, aqui olhamos o **dinheiro real**:
-        * **Lucro Líquido:** É o que sobra na conta após todas as saídas.
-        * **Impacto no Faturamento:** Mostra qual grupo "come" a maior parte do que você ganha. Se o pessoal consome 60% da receita, a Maldívas é uma empresa de alta intensidade de mão de obra.
+        ### 4. Lucratividade (Tab 💎)
+        Aqui calculamos a **Margem de Caixa**. 
+        * **Saldo Positivo:** Capacidade de reinvestimento ou distribuição de lucros.
+        * **Saldo Negativo:** Operação sendo financiada por reserva ou capital de terceiros.
 
-        ---
-        ### 📄 5. O Relatório Executivo (Sidebar)
-        Criamos um botão de exportação que gera um arquivo TXT com layout monoespaçado, perfeito para ser lido em qualquer dispositivo ou enviado via WhatsApp para os sócios. Ele resume os **KPIs (Indicadores Chave)** sem a necessidade de navegar pelo dashboard.
+        ### 5. Relatório para Sócios (Botão na Sidebar)
+        O botão "Baixar Relatório" gera um resumo executivo formatado para o Bloco de Notas ou WhatsApp. Ele contém o Branding da Maldívas e os insights que um CFO prioriza (Margem, Pareto e Status de Operação).
         """)
 
 except Exception as e:
