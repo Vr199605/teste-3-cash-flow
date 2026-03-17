@@ -97,16 +97,13 @@ try:
     lista_meses = sorted(list(set(meses_s) | set(meses_r)), key=lambda x: pd.to_datetime(x, format='%m/%Y'))
 
     with st.sidebar:
-        # --- CAMINHO DA IMAGEM ATUALIZADO ---
-        caminho_imagem = r"\\DESKTOP-K6UL07A\Users\user\Downloads\Fluxo de Caixa\logo-white.jpg"
-        
-        if os.path.exists(caminho_imagem):
-            st.image(caminho_imagem, use_container_width=True)
-        else:
-            # Caso o caminho de rede falhe, tenta pegar na pasta local do script
+        # --- CARREGAMENTO DA LOGO ---
+        if os.path.exists("logo-white.jpg"):
             st.image("logo-white.jpg", use_container_width=True)
-        
-        st.markdown("<h2 style='color: #00D1FF;'>💎 DASHBOARD</h2>", unsafe_allow_html=True)
+        else:
+            st.markdown("<h2 style='color: #00D1FF;'>💎 DASHBOARD</h2>", unsafe_allow_html=True)
+            st.warning("Verifique se o arquivo 'logo-white.jpg' está na mesma pasta do script.")
+
         if st.button("🔄 Atualizar Dados", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
@@ -119,11 +116,10 @@ try:
         cats_dinamicas = [cat for g in grupos_sel for cat in MAPA_GRUPOS[g]]
         cats_sel = st.multiselect("🏷️ Categorias:", options=sorted(list(set(cats_dinamicas))), default=sorted(list(set(cats_dinamicas))))
 
-        # --- ADIÇÃO EXPORTAÇÃO TXT ---
+        # --- EXPORTAÇÃO TXT ---
         st.write("---")
         if meses_sel:
             st.markdown("### 📄 Relatório p/ Sócios")
-            
             df_m = df_raw[df_raw['Mes_Ano'].isin(meses_sel)]
             df_r_m = df_rec_raw[df_rec_raw['Mes_Ano'].isin(meses_sel)]
             t_in = df_r_m[col_v].sum()
@@ -134,68 +130,37 @@ try:
 
             report = f"""
 ============================================================
-           __  __          _      _ _             
-          |  \/  |  _ _   | |  __| (_) __ __  __ _ 
-          | |\/| | / _` | | | / _` | | \ V / / _` |
-          |_|  |_| \__,_| |_| \__,_|_|  \_/  \__,_|
                     GROUP FINANCIAL REPORT
 ============================================================
 PERÍODO ANALISADO: {', '.join(meses_sel)}
-DATA DE EMISSÃO:  {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
+STATUS: {"✅ POSITIVO" if saldo > 0 else "🚨 ALERTA"}
 ============================================================
 
-1. RESUMO EXECUTIVO (CFO VIEW)
+1. SUMÁRIO (CASH FLOW)
 ------------------------------------------------------------
-(+) TOTAL RECEBIDO (CASH IN):    {format_brl(t_in)}
-(-) TOTAL DESPESAS (CASH OUT):   {format_brl(t_out)}
+(+) TOTAL CASH IN:    {format_brl(t_in)}
+(-) TOTAL CASH OUT:   {format_brl(t_out)}
 ------------------------------------------------------------
-(=) SALDO LÍQUIDO NO PERÍODO:    {format_brl(saldo)}
-(%) MARGEM DE CAIXA:             {margem:.2f}%
+(=) SALDO LÍQUIDO:    {format_brl(saldo)}
+(%) MARGEM CAIXA:     {margem:.2f}%
 
-STATUS: {"✅ OPERAÇÃO SAUDÁVEL" if saldo > 0 else "🚨 ALERTA DE CASH BURN"}
-
-2. PERFORMANCE POR GRUPO ESTRATÉGICO
-------------------------------------------------------------
-"""
-            for g in grupos_sel:
-                v = abs(df_m[(df_m['Grupo_Filtro'] == g) & (df_m[col_v] < 0)][col_v].sum())
-                p = (v/t_out*100) if t_out > 0 else 0
-                report += f"- {g:<20}: {format_brl(v)} ({p:.1f}%)\n"
-
-            report += f"""
-3. PARETO: TOP 5 GARGALOS (Onde está o dinheiro?)
+2. TOP 5 GARGALOS
 ------------------------------------------------------------
 """
             for c, val in top_cat.items():
                 report += f"- {c:<25}: {format_brl(val)}\n"
 
-            report += f"""
-4. INSIGHTS PARA TOMADA DE DECISÃO
-------------------------------------------------------------
-* EFICIÊNCIA: A margem de {margem:.2f}% reflete o fôlego financeiro atual.
-* ALOCAÇÃO: {top_cat.index[0] if not top_cat.empty else "N/A"} é o maior centro de custo.
-* RECOMENDAÇÃO: Avaliar contratos recorrentes no grupo {top_cat.index[0] if not top_cat.empty else "N/A"}.
-
-Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
-============================================================
-"""
             st.download_button(
-                label="📥 Exportar Relatório Executivo",
+                label="📥 Baixar Relatório (TXT)",
                 data=report,
-                file_name=f"RELATORIO_FINANCEIRO_{'_'.join(meses_sel)}.txt",
+                file_name=f"Relatorio_{'_'.join(meses_sel)}.txt",
                 mime="text/plain",
                 use_container_width=True
             )
 
-    # Filtros Saídas/Recebidos (Resto do código mantido igual)
-    df = df_raw.copy()
-    if meses_sel: df = df[df['Mes_Ano'].isin(meses_sel)]
-    if grupos_sel: df = df[df['Grupo_Filtro'].isin(grupos_sel)]
-    if cats_sel: df = df[df['Categoria'].isin(cats_sel)]
-    df_rec = df_rec_raw.copy()
-    if meses_sel: df_rec = df_rec[df_rec['Mes_Ano'].isin(meses_sel)]
-
+    # Conteúdo Principal
     st.title("💸 Cash Flow | Expenses and Receipts")
+    
     total_recebidos_header = df_rec[col_v].sum()
     c_in_1, c_in_2 = st.columns([1, 3])
     with c_in_1:
@@ -206,9 +171,9 @@ Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
             </div>
         """, unsafe_allow_html=True)
     
-    st.write("") 
     saidas_df = df[df[col_v] < 0]
     total_geral = saidas_df[col_v].sum()
+    
     cols_m = st.columns(len(grupos_sel) + 1)
     with cols_m[0]:
         st.metric("CASH OUT TOTAL", format_brl(abs(total_geral)))
@@ -218,59 +183,28 @@ Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
             st.metric(grupo.upper(), format_brl(abs(val_g)))
 
     st.write("---")
+
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 APRESENTAÇÃO", "🔥 CASH BURN", "🎯 PARETO", "📋 DADOS", 
         "💰 RECEBIDOS", "📈 ANÁLISE MENSAL", "💎 LUCRATIVIDADE", "📖 GUIA DO DASHBOARD"
     ])
 
-    with tab1:
-        st.markdown("### 🏛️ Visão Executiva e Estrutura de Dados")
-        st.markdown("---")
-        pres_col1, pres_col2 = st.columns(2)
-        with pres_col1:
-            st.markdown(f"""
-            #### 🎯 Objetivo da Ferramenta
-            Este ecossistema foi projetado para converter dados brutos de faturamento e despesas em **Inteligência Financeira**.
-            """)
-        with pres_col2:
-            st.markdown("#### 🛠️ Pilares de Análise")
-            st.info("**Fluxo de Caixa (Realizado):** Focado no saldo bancário.")
-
+    with tab1: st.markdown("### 🏛️ Visão Executiva")
     with tab2:
         if not saidas_df.empty:
             burn = saidas_df.groupby('Data de pagamento')[col_v].sum().abs().cumsum().reset_index()
-            burn.columns = ['Data', 'Gasto Acumulado']
-            st.line_chart(burn.set_index('Data')['Gasto Acumulado'], color="#FF4B4B")
-
+            st.line_chart(burn.set_index('Data de pagamento'))
     with tab3:
-        c1, c2 = st.columns(2)
-        with c1:
-            g_pareto = saidas_df.groupby('Grupo_Filtro')[col_v].sum().abs().sort_values(ascending=False).reset_index()
-            st.bar_chart(g_pareto.set_index('Grupo_Filtro')[col_v], color="#00D1FF")
-
-    with tab4: st.dataframe(df, use_container_width=True, hide_index=True)
-    with tab5: st.dataframe(df_rec, use_container_width=True, hide_index=True)
+        g_pareto = saidas_df.groupby('Grupo_Filtro')[col_v].sum().abs().sort_values(ascending=False).reset_index()
+        st.bar_chart(g_pareto.set_index('Grupo_Filtro')[col_v])
+    with tab4: st.dataframe(df, use_container_width=True)
+    with tab5: st.dataframe(df_rec, use_container_width=True)
     with tab6:
         curr_s = abs(df[df[col_v] < 0][col_v].sum())
         curr_e = df_rec[col_v].sum()
-        resultado = curr_e - curr_s
-        st.metric("Saldo Líquido", format_brl(resultado))
-
-    with tab7:
-        total_e = df_rec[col_v].sum()
-        total_s = abs(df[df[col_v] < 0][col_v].sum())
-        lucro_abs = total_e - total_s
-        st.markdown(f"## {format_brl(lucro_abs)}")
-
-    with tab8:
-        st.header("📖 Guia Didático e Manual de Interpretação")
-        st.markdown("""
-        ### 📊 1. Entendendo os Pilares (Grupos)
-        * **Administrativo:** Manutenção da infraestrutura.
-        * **Pessoal:** Capital humano e encargos.
-        * **Operacional:** Custo direto da prestação de serviço.
-        * **Tributário:** Obrigações governamentais.
-        """)
+        st.metric("Saldo Líquido", format_brl(curr_e - curr_s))
+    with tab7: st.subheader("Indicadores de Lucratividade")
+    with tab8: st.header("📖 Guia Didático")
 
 except Exception as e:
     st.error(f"Erro ao carregar layout: {e}")
