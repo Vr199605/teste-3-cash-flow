@@ -99,6 +99,9 @@ try:
     lista_meses = sorted(list(set(meses_s) | set(meses_r)), key=lambda x: pd.to_datetime(x, format='%m/%Y'))
 
     with st.sidebar:
+        # --- ADIÇÃO DA LOGO ---
+        st.image("logo-white.jpg", use_container_width=True)
+        
         st.markdown("<h2 style='color: #00D1FF;'>💎 DASHBOARD</h2>", unsafe_allow_html=True)
         if st.button("🔄 Atualizar Dados", use_container_width=True):
             st.cache_data.clear()
@@ -111,6 +114,75 @@ try:
         
         cats_dinamicas = [cat for g in grupos_sel for cat in MAPA_GRUPOS[g]]
         cats_sel = st.multiselect("🏷️ Categorias:", options=sorted(list(set(cats_dinamicas))), default=sorted(list(set(cats_dinamicas))))
+
+        # --- ADIÇÃO EXPORTAÇÃO TXT ---
+        st.write("---")
+        if meses_sel:
+            st.markdown("### 📄 Relatório p/ Sócios")
+            
+            # Cálculos para o Relatório
+            df_m = df_raw[df_raw['Mes_Ano'].isin(meses_sel)]
+            df_r_m = df_rec_raw[df_rec_raw['Mes_Ano'].isin(meses_sel)]
+            t_in = df_r_m[col_v].sum()
+            t_out = abs(df_m[df_m[col_v] < 0][col_v].sum())
+            saldo = t_in - t_out
+            margem = (saldo / t_in * 100) if t_in > 0 else 0
+            top_cat = df_m[df_m[col_v] < 0].groupby('Categoria')[col_v].sum().abs().sort_values(ascending=False).head(5)
+
+            report = f"""
+============================================================
+           __  __          _      _ _             
+          |  \/  |  _ _   | |  __| (_) __ __  __ _ 
+          | |\/| | / _` | | | / _` | | \ V / / _` |
+          |_|  |_| \__,_| |_| \__,_|_|  \_/  \__,_|
+                    GROUP FINANCIAL REPORT
+============================================================
+PERÍODO ANALISADO: {', '.join(meses_sel)}
+DATA DE EMISSÃO:  {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
+============================================================
+
+1. RESUMO EXECUTIVO (CFO VIEW)
+------------------------------------------------------------
+(+) TOTAL RECEBIDO (CASH IN):    {format_brl(t_in)}
+(-) TOTAL DESPESAS (CASH OUT):   {format_brl(t_out)}
+------------------------------------------------------------
+(=) SALDO LÍQUIDO NO PERÍODO:    {format_brl(saldo)}
+(%) MARGEM DE CAIXA:             {margem:.2f}%
+
+STATUS: {"✅ OPERAÇÃO SAUDÁVEL" if saldo > 0 else "🚨 ALERTA DE CASH BURN"}
+
+2. PERFORMANCE POR GRUPO ESTRATÉGICO
+------------------------------------------------------------
+"""
+            for g in grupos_sel:
+                v = abs(df_m[(df_m['Grupo_Filtro'] == g) & (df_m[col_v] < 0)][col_v].sum())
+                p = (v/t_out*100) if t_out > 0 else 0
+                report += f"- {g:<20}: {format_brl(v)} ({p:.1f}%)\n"
+
+            report += f"""
+3. PARETO: TOP 5 GARGALOS (Onde está o dinheiro?)
+------------------------------------------------------------
+"""
+            for c, val in top_cat.items():
+                report += f"- {c:<25}: {format_brl(val)}\n"
+
+            report += f"""
+4. INSIGHTS PARA TOMADA DE DECISÃO
+------------------------------------------------------------
+* EFICIÊNCIA: A margem de {margem:.2f}% reflete o fôlego financeiro atual.
+* ALOCAÇÃO: {top_cat.index[0] if not top_cat.empty else "N/A"} é o maior centro de custo.
+* RECOMENDAÇÃO: Avaliar contratos recorrentes no grupo {top_cat.index[0] if not top_cat.empty else "N/A"}.
+
+Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
+============================================================
+"""
+            st.download_button(
+                label="📥 Exportar Relatório Executivo",
+                data=report,
+                file_name=f"RELATORIO_FINANCEIRO_{'_'.join(meses_sel)}.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
 
     # Filtros Saídas
     df = df_raw.copy()
@@ -153,10 +225,9 @@ try:
 
     st.write("---")
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 APRESENTAÇÃO", "🔥 CASH BURN", "🎯 PARETO", "📋 DADOS", 
-        "💰 RECEBIDOS", "📈 ANÁLISE MENSAL", "💎 LUCRATIVIDADE", "📖 GUIA",
-        "📉 ESTATÍSTICA", "🔮 PREVISIBILIDADE"
+        "💰 RECEBIDOS", "📈 ANÁLISE MENSAL", "💎 LUCRATIVIDADE", "📖 GUIA DO DASHBOARD"
     ])
 
     with tab1:
@@ -284,60 +355,40 @@ try:
             st.info("Aguardando dados de receita para calcular impacto por grupo.")
 
     with tab8:
-        st.header("📖 Guia Didático do Dashboard")
+        st.header("📖 Guia Didático e Manual de Interpretação")
         st.markdown("""
-        Este guia explica a lógica de funcionamento de cada seção e como os números são interpretados para ajudar na tomada de decisão.
+        Bem-vindo ao manual oficial do seu ecossistema financeiro. Este guia explica a lógica por trás de cada número para que a tomada de decisão seja cirúrgica.
 
         ---
-        ### 1. Visão Geral (Cards Superiores)
-        * **CASH IN TOTAL:** Total de entradas registradas. Posicionado no topo para indicar o fôlego inicial do caixa.
-        * **CASH OUT TOTAL:** A soma absoluta de todos os valores negativos (saídas) no período selecionado.
-        * **Métricas por Grupo:** Exibe o gasto total em cada grande área.
+        ### 📊 1. Entendendo os Pilares (Grupos)
+        As despesas não são apenas números, elas têm funções estratégicas:
+        * **Administrativo:** São os custos de "manutenção da máquina" (condomínio, softwares, aluguel). O objetivo aqui é **eficiência**.
+        * **Pessoal:** Reflete o investimento no capital humano. Monitoramos aqui a carga tributária sobre folha e bônus.
+        * **Operacional:** Custos ligados diretamente ao serviço prestado. Se este cresce sem a receita subir, há um gargalo de margem.
+        * **Tributário:** Impostos e taxas. Essencial para o compliance e saúde fiscal da Maldívas.
 
         ---
-        ### 2. Explicação das Abas
+        ### 🔥 2. Gráfico de Cash Burn (Tab 2)
+        O gráfico de linha mostra o **Gasto Acumulado** ao longo do mês.
+        * **Inclinado para cima:** Indica que o caixa está sendo consumido rapidamente.
+        * **Platô (linha reta):** Indica períodos sem saídas, ideal para equilibrar com as entradas.
+        * **Utilidade:** Ajuda o CFO a prever se o saldo atual suporta os próximos 15 dias de operação.
 
-        #### 📈 ANÁLISE MENSAL (Fluxo de Caixa Líquido)
-        * **Saldo Líquido:** O valor numérico fica vermelho para prejuízo e verde/azul para lucro.
+        ---
+        ### 🎯 3. Lógica de Pareto (Tab 3)
+        Aplicamos o conceito de 80/20: 80% dos seus gastos vêm de 20% das suas categorias.
+        * **Foco:** Não perca tempo tentando economizar no "Material de Escritório" se o "Serviço de Publicidade" representa 40% do custo. Ataque o topo da lista.
 
-        #### 💎 LUCRATIVIDADE (Eficiência Operacional)
-        * **Lucro Líquido (Caixa):** O valor numérico reflete a cor do resultado (Vermelho para negativo).
+        ---
+        ### 💎 4. Lucratividade vs. Margem de Caixa (Tab 7)
+        Diferente do DRE contábil, aqui olhamos o **dinheiro real**:
+        * **Lucro Líquido:** É o que sobra na conta após todas as saídas.
+        * **Impacto no Faturamento:** Mostra qual grupo "come" a maior parte do que você ganha. Se o pessoal consome 60% da receita, a Maldívas é uma empresa de alta intensidade de mão de obra.
+
+        ---
+        ### 📄 5. O Relatório Executivo (Sidebar)
+        Criamos um botão de exportação que gera um arquivo TXT com layout monoespaçado, perfeito para ser lido em qualquer dispositivo ou enviado via WhatsApp para os sócios. Ele resume os **KPIs (Indicadores Chave)** sem a necessidade de navegar pelo dashboard.
         """)
-
-    with tab9:
-        st.subheader("📉 Análise de Volatilidade e Dispersão")
-        if not saidas_df.empty:
-            stats_df = saidas_df.groupby('Categoria')[col_v].agg(['count', 'mean', 'std']).abs()
-            stats_df.columns = ['Frequência', 'Média (R$)', 'Desvio Padrão']
-            stats_df['Volatilidade (%)'] = (stats_df['Desvio Padrão'] / stats_df['Média (R$)']) * 100
-            stats_df = stats_df.sort_values(by='Desvio Padrão', ascending=False)
-            e_col1, e_col2 = st.columns([1, 1])
-            with e_col1:
-                st.write("**Estabilidade de Gastos**")
-                st.dataframe(stats_df.style.format({'Média (R$)': "R$ {:,.2f}", 'Desvio Padrão': "{:,.2f}", 'Volatilidade (%)': "{:,.1f}%"}), use_container_width=True)
-            with e_col2:
-                st.write("**Distribuição por Grupo (Amplitude)**")
-                st.vega_lite_chart(saidas_df, {'mark': {'type': 'boxplot', 'extent': 'min-max', 'color': '#00D1FF'}, 'encoding': {'x': {'field': 'Grupo_Filtro', 'type': 'nominal', 'title': 'Grupo'}, 'y': {'field': col_v, 'type': 'quantitative', 'title': 'Valor Absoluto'}}}, use_container_width=True)
-
-    with tab10:
-        st.subheader("🔮 Tendências e Sazonalidade")
-        df_r_ts = df_rec_raw.groupby('Mes_Ano')[col_v].sum().reset_index()
-        df_s_ts = df_raw.groupby('Mes_Ano')[col_v].sum().abs().reset_index()
-        df_r_ts['Data'] = pd.to_datetime(df_r_ts['Mes_Ano'], format='%m/%Y')
-        df_s_ts['Data'] = pd.to_datetime(df_s_ts['Mes_Ano'], format='%m/%Y')
-        ts_final = pd.merge(df_r_ts, df_s_ts, on='Data', suffixes=('_In', '_Out')).sort_values('Data')
-        if not ts_final.empty:
-            ts_final['Tendência_In'] = ts_final['Valor categoria/centro de custo_In'].rolling(window=3).mean()
-            st.write("**Comportamento de Entradas vs Tendência (Média Móvel)**")
-            st.line_chart(ts_final.set_index('Data')[['Valor categoria/centro de custo_In', 'Tendência_In']], color=["#00D1FF", "#FFFFFF"])
-            corr = ts_final['Valor categoria/centro de custo_In'].corr(ts_final['Valor categoria/centro de custo_Out'])
-            st.write("---")
-            c1, c2 = st.columns(2)
-            c1.metric("Índice de Correlação (In vs Out)", f"{corr:.2f}")
-            with c2:
-                if corr > 0.7: st.warning("⚠️ Alta Correlação: Seus custos sobem quase na mesma medida que sua receita.")
-                elif corr < 0.3: st.success("✅ Custos Desacoplados: Sua operação mantém estabilidade idependente do volume de entrada.")
-                else: st.info("ℹ️ Correlação Moderada: Relação estável entre ganhos e gastos.")
 
 except Exception as e:
     st.error(f"Erro ao carregar layout: {e}")
