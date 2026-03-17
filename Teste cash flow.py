@@ -97,14 +97,16 @@ try:
     lista_meses = sorted(list(set(meses_s) | set(meses_r)), key=lambda x: pd.to_datetime(x, format='%m/%Y'))
 
     with st.sidebar:
-        # TENTATIVA DE CARREGAR A LOGO NO CAMINHO ESPECIFICADO
-        path_logo = r"C:\Users\user\Downloads\logo-white.jpg"
-        if os.path.exists(path_logo):
-            st.image(path_logo, use_container_width=True)
-        else:
-            st.info("Logo Maldívas") # Fallback simples caso o caminho mude
+        # --- CAMINHO DA IMAGEM ATUALIZADO ---
+        caminho_imagem = r"\\DESKTOP-K6UL07A\Users\user\Downloads\Fluxo de Caixa\logo-white.jpg"
         
-        st.markdown("<h2 style='color: #00D1FF; text-align: center;'>MALDÍVAS GROUP</h2>", unsafe_allow_html=True)
+        if os.path.exists(caminho_imagem):
+            st.image(caminho_imagem, use_container_width=True)
+        else:
+            # Caso o caminho de rede falhe, tenta pegar na pasta local do script
+            st.image("logo-white.jpg", use_container_width=True)
+        
+        st.markdown("<h2 style='color: #00D1FF;'>💎 DASHBOARD</h2>", unsafe_allow_html=True)
         if st.button("🔄 Atualizar Dados", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
@@ -117,9 +119,11 @@ try:
         cats_dinamicas = [cat for g in grupos_sel for cat in MAPA_GRUPOS[g]]
         cats_sel = st.multiselect("🏷️ Categorias:", options=sorted(list(set(cats_dinamicas))), default=sorted(list(set(cats_dinamicas))))
 
-        # --- EXPORTAÇÃO EXECUTIVA (REQUISITO SÓCIOS/CFO) ---
+        # --- ADIÇÃO EXPORTAÇÃO TXT ---
         st.write("---")
         if meses_sel:
+            st.markdown("### 📄 Relatório p/ Sócios")
+            
             df_m = df_raw[df_raw['Mes_Ano'].isin(meses_sel)]
             df_r_m = df_rec_raw[df_rec_raw['Mes_Ano'].isin(meses_sel)]
             t_in = df_r_m[col_v].sum()
@@ -128,7 +132,7 @@ try:
             margem = (saldo / t_in * 100) if t_in > 0 else 0
             top_cat = df_m[df_m[col_v] < 0].groupby('Categoria')[col_v].sum().abs().sort_values(ascending=False).head(5)
 
-            report_txt = f"""
+            report = f"""
 ============================================================
            __  __          _      _ _             
           |  \/  |  _ _   | |  __| (_) __ __  __ _ 
@@ -137,51 +141,53 @@ try:
                     GROUP FINANCIAL REPORT
 ============================================================
 PERÍODO ANALISADO: {', '.join(meses_sel)}
-STATUS: {"✅ POSITIVO" if saldo > 0 else "🚨 ATENÇÃO: CASH BURN"}
+DATA DE EMISSÃO:  {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
 ============================================================
 
-1. SUMÁRIO FINANCEIRO (REGIME DE CAIXA)
+1. RESUMO EXECUTIVO (CFO VIEW)
 ------------------------------------------------------------
-(+) TOTAL ENTRADAS:              {format_brl(t_in)}
-(-) TOTAL SAÍDAS:                {format_brl(t_out)}
+(+) TOTAL RECEBIDO (CASH IN):    {format_brl(t_in)}
+(-) TOTAL DESPESAS (CASH OUT):   {format_brl(t_out)}
 ------------------------------------------------------------
-(=) RESULTADO LÍQUIDO:           {format_brl(saldo)}
-(%) MARGEM DE OPERAÇÃO:          {margem:.2f}%
+(=) SALDO LÍQUIDO NO PERÍODO:    {format_brl(saldo)}
+(%) MARGEM DE CAIXA:             {margem:.2f}%
 
-2. COMPOSIÇÃO DE CUSTOS POR GRUPO
+STATUS: {"✅ OPERAÇÃO SAUDÁVEL" if saldo > 0 else "🚨 ALERTA DE CASH BURN"}
+
+2. PERFORMANCE POR GRUPO ESTRATÉGICO
 ------------------------------------------------------------
 """
             for g in grupos_sel:
-                v_g = abs(df_m[(df_m['Grupo_Filtro'] == g) & (df_m[col_v] < 0)][col_v].sum())
-                p_g = (v_g / t_out * 100) if t_out > 0 else 0
-                report_txt += f"- {g:<20}: {format_brl(v_g)} ({p_g:.1f}%)\n"
+                v = abs(df_m[(df_m['Grupo_Filtro'] == g) & (df_m[col_v] < 0)][col_v].sum())
+                p = (v/t_out*100) if t_out > 0 else 0
+                report += f"- {g:<20}: {format_brl(v)} ({p:.1f}%)\n"
 
-            report_txt += f"""
-3. ANÁLISE DE PARETO (TOP 5 GARGALOS)
+            report += f"""
+3. PARETO: TOP 5 GARGALOS (Onde está o dinheiro?)
 ------------------------------------------------------------
 """
-            for cat, val in top_cat.items():
-                report_txt += f"- {cat:<25}: {format_brl(val)}\n"
+            for c, val in top_cat.items():
+                report += f"- {c:<25}: {format_brl(val)}\n"
 
-            report_txt += f"""
-4. INSIGHTS ESTRATÉGICOS PARA SÓCIOS
+            report += f"""
+4. INSIGHTS PARA TOMADA DE DECISÃO
 ------------------------------------------------------------
-* Eficiência: A margem de {margem:.2f}% indica a saúde líquida imediata.
-* Maior Ofensor: {top_cat.index[0] if not top_cat.empty else "N/A"} concentra o maior volume de saídas.
-* Recomendações: Revisar custos variáveis do grupo {top_cat.index[0] if not top_cat.empty else "N/A"}.
+* EFICIÊNCIA: A margem de {margem:.2f}% reflete o fôlego financeiro atual.
+* ALOCAÇÃO: {top_cat.index[0] if not top_cat.empty else "N/A"} é o maior centro de custo.
+* RECOMENDAÇÃO: Avaliar contratos recorrentes no grupo {top_cat.index[0] if not top_cat.empty else "N/A"}.
 
-Documento gerado em {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
+Gerado via Dashboard Cash Flow | AP - Inteligência Maldívas
 ============================================================
 """
             st.download_button(
-                label="📥 Baixar Relatório Executivo (TXT)",
-                data=report_txt,
-                file_name=f"Relatorio_Maldívas_{'_'.join(meses_sel)}.txt",
+                label="📥 Exportar Relatório Executivo",
+                data=report,
+                file_name=f"RELATORIO_FINANCEIRO_{'_'.join(meses_sel)}.txt",
                 mime="text/plain",
                 use_container_width=True
             )
 
-    # Filtros Saídas/Recebidos
+    # Filtros Saídas/Recebidos (Resto do código mantido igual)
     df = df_raw.copy()
     if meses_sel: df = df[df['Mes_Ano'].isin(meses_sel)]
     if grupos_sel: df = df[df['Grupo_Filtro'].isin(grupos_sel)]
@@ -189,7 +195,6 @@ Documento gerado em {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
     df_rec = df_rec_raw.copy()
     if meses_sel: df_rec = df_rec[df_rec['Mes_Ano'].isin(meses_sel)]
 
-    # --- HEADER PRINCIPAL ---
     st.title("💸 Cash Flow | Expenses and Receipts")
     total_recebidos_header = df_rec[col_v].sum()
     c_in_1, c_in_2 = st.columns([1, 3])
@@ -213,7 +218,6 @@ Documento gerado em {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
             st.metric(grupo.upper(), format_brl(abs(val_g)))
 
     st.write("---")
-
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 APRESENTAÇÃO", "🔥 CASH BURN", "🎯 PARETO", "📋 DADOS", 
         "💰 RECEBIDOS", "📈 ANÁLISE MENSAL", "💎 LUCRATIVIDADE", "📖 GUIA DO DASHBOARD"
@@ -226,33 +230,23 @@ Documento gerado em {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
         with pres_col1:
             st.markdown(f"""
             #### 🎯 Objetivo da Ferramenta
-            Ecossistema para converter dados financeiros em inteligência estratégica Maldívas.
-            1. **Ingestão:** Conexão direta via Google Sheets.
-            2. **Processamento:** Limpeza de caracteres e conversão monetária.
-            3. **Categorização:** Mapeamento em 4 pilares estratégicos.
+            Este ecossistema foi projetado para converter dados brutos de faturamento e despesas em **Inteligência Financeira**.
             """)
         with pres_col2:
             st.markdown("#### 🛠️ Pilares de Análise")
-            st.info("**Cash Flow:** Foco no realizado bancário.")
-            st.warning("**Pareto:** Identificação de ofensores 80/20.")
+            st.info("**Fluxo de Caixa (Realizado):** Focado no saldo bancário.")
 
     with tab2:
-        st.subheader("Queima de Caixa Diária (Acumulada)")
         if not saidas_df.empty:
-            burn = saidas_df.groupby('Data de pagamento')[col_v].sum().abs().reset_index().sort_values('Data de pagamento')
-            burn['Acumulado'] = burn[col_v].cumsum()
-            st.line_chart(burn.set_index('Data de pagamento')['Acumulado'], color="#FF4B4B")
+            burn = saidas_df.groupby('Data de pagamento')[col_v].sum().abs().cumsum().reset_index()
+            burn.columns = ['Data', 'Gasto Acumulado']
+            st.line_chart(burn.set_index('Data')['Gasto Acumulado'], color="#FF4B4B")
 
     with tab3:
         c1, c2 = st.columns(2)
         with c1:
-            st.subheader("Maiores Gastos por Grupo")
-            g_p = saidas_df.groupby('Grupo_Filtro')[col_v].sum().abs().sort_values(ascending=False).reset_index()
-            st.bar_chart(g_p.set_index('Grupo_Filtro')[col_v], color="#00D1FF")
-        with c2:
-            st.subheader("Top 10 Categorias")
-            c_p = saidas_df.groupby('Categoria')[col_v].sum().abs().sort_values(ascending=False).head(10).reset_index()
-            st.bar_chart(c_p.set_index('Categoria')[col_v], color="#00D1FF")
+            g_pareto = saidas_df.groupby('Grupo_Filtro')[col_v].sum().abs().sort_values(ascending=False).reset_index()
+            st.bar_chart(g_pareto.set_index('Grupo_Filtro')[col_v], color="#00D1FF")
 
     with tab4: st.dataframe(df, use_container_width=True, hide_index=True)
     with tab5: st.dataframe(df_rec, use_container_width=True, hide_index=True)
@@ -263,31 +257,19 @@ Documento gerado em {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}
         st.metric("Saldo Líquido", format_brl(resultado))
 
     with tab7:
-        st.subheader("INDICADORES DE LUCRATIVIDADE")
         total_e = df_rec[col_v].sum()
         total_s = abs(df[df[col_v] < 0][col_v].sum())
         lucro_abs = total_e - total_s
         st.markdown(f"## {format_brl(lucro_abs)}")
 
     with tab8:
-        st.header("📖 Guia Didático: Maldívas Financial Intel")
+        st.header("📖 Guia Didático e Manual de Interpretação")
         st.markdown("""
-        Este dashboard traduz a saúde financeira em indicadores de fácil digestão.
-
-        ### 📋 Entendendo a Estrutura
-        * **Administrativo:** Custos de suporte. Aqui focamos em **Eficiência**.
-        * **Pessoal:** Capital humano. Monitoramos a **Escalabilidade**.
-        * **Operacional:** Custo da entrega. Observamos a **Margem**.
-        * **Tributário:** Obrigações fiscais. Garantimos o **Compliance**.
-
-        ### 🔥 Cash Burn (Queima de Caixa)
-        Representa a velocidade com que os recursos saem. Se a linha for íngreme, os custos estão concentrados; se for suave, as saídas são diluídas.
-
-        ### 🎯 Pareto (Onde focar?)
-        Aplica a regra de que poucos itens respondem pela maior parte do custo. Para reduzir despesas, atue no **topo dos gráficos** da Tab 3.
-
-        ### 📄 Relatório Executivo (Sidebar)
-        Função exclusiva para sócios. O arquivo TXT exportado já vem formatado com insights automáticos sobre os maiores gargalos e status da operação (Saudável vs Alerta).
+        ### 📊 1. Entendendo os Pilares (Grupos)
+        * **Administrativo:** Manutenção da infraestrutura.
+        * **Pessoal:** Capital humano e encargos.
+        * **Operacional:** Custo direto da prestação de serviço.
+        * **Tributário:** Obrigações governamentais.
         """)
 
 except Exception as e:
